@@ -1,0 +1,174 @@
+#!/bin/bash
+
+#set directory to web folder of the current user
+webdir="$HOME/web";
+
+getDB() {
+
+	#check if there is a wp-config file
+	if ! [ -f "wp-config.php" ]; then
+		echo "wp-config not found in $(pwd)";
+		exit;
+	fi
+
+	#getting DB, user, password and host from wp-config
+	dbUser=$(grep "DB_USER" wp-config.php | sed -r "s/(.+, ')//g" | sed -r "s/'.+//g");
+	dbPass=$(grep "DB_PASS" wp-config.php | sed -r "s/(.+, ')//g" | sed -r "s/'.+//g");
+	dbName=$(grep "DB_NAME" wp-config.php | sed -r "s/(.+, ')//g" | sed -r "s/'.+//g");
+	dbHost=$(grep "DB_HOST" wp-config.php | sed -r "s/(.+, ')//g" | sed -r "s/'.+//g");
+
+	#TODO if is beta or liveserver change DBHOST
+
+	$(mysqldump -u$dbUser -h$dbHost -p$dbPass $dbName > tempSQL.sql);
+
+	databaseName=${USER}_${1};
+
+	if ! [ -d "/var/lib/mysql/$databaseName" ]; then
+		echo "creating DB...";
+		$(mysql -u$USER -hlocalhost -p$CTPW -e "CREATE DATABASE $databaseName");
+		echo "done!";
+	fi
+
+	echo "importing DB...";
+	$(mysql -u$USER -p$CTPW $databaseName < tempSQL.sql);
+	echo "done!";
+
+	$(rm "tempSQL.sql");
+
+	echo "change settings...";
+	$(sed -i "s/define( 'DB_NAME', '$dbName' )/define( 'DB_NAME', '$databaseName' )/g" wp-config.php);
+	$(sed -i "s/define( 'DB_USER', '$dbUser' )/define( 'DB_USER', '$USER' )/g" wp-config.php);
+	$(sed -i "s/define( 'DB_PASSWORD', '$dbPass' )/define( 'DB_PASSWORD', '$CTPW' )/g" wp-config.php);
+	$(sed -i "s/define( 'DB_HOST', '$dbHost' )/define( 'DB_HOST', 'localhost' )/g" wp-config.php);
+	echo "done!";
+
+	echo "doing search-replace";
+	$(wp search-replace $dbUser.dev $USER.dev);
+	echo "done!";
+}
+
+#########--------->>Main<<--------------------#########
+
+#set defaults
+missingARGS=false;
+isLiveInstallation=false;
+port=3018;
+deleteExistingInstallation=false;
+
+#########--------->>Argumentshandling<<-------#########
+for ARGS in "$@"; do
+
+	case "$ARGS" in
+
+		#ARGS for devinstallation
+		-u|--user)					user="$2" 
+									shift 2;;
+		-p|--project) 				project="$2" 
+									shift 2;;
+		-d|--delete)				deleteExistingInstallation=true
+									shift;;
+												
+		#ARGS for liveinstallation
+		-l|--live)					isLiveInstallation=true
+									shift;;
+		
+		-s|--server)				server="$2"
+									shift 2;;
+		-p|--port)					port="$2"
+									shift 2;;
+	esac
+done
+
+#########--------->>Errorhandling<<-----------#########
+if $isLiveInstallation; then
+
+	if [ -z "$server" ]; then
+		echo "Missing argument!";
+		echo "please enter -s <server> or --server <server>";
+		missingARGS=true;
+	fi
+fi
+
+#minimum required ARGS
+if [ -z "$user" ]; then
+	echo "Missing argument!";
+	echo "please enter -u <user> or --user <user>";
+	missingARGS=true;
+fi
+
+if [ -z "$project" ]; then
+	echo "Missing argument!";
+	echo "please enter -p <project> or --project <project>";
+	missingARGS=true;
+fi
+
+#return if required ARGS are missing
+if $missingARGS; then
+	
+	echo "usage for devinstallation:";
+	echo "getinstallation -u|--user <user> -p|--project <project> [ -d|--delete ]\n";
+
+	echo "usage for liveinstallation:"; 
+	echo "getinstallation -l -u <user> -s <server> [ -d|--delete, -p|--port <Portnumber>]";
+
+	exit;
+fi
+
+#we are good to go!
+
+#change directory to web folder
+cd;
+cd "$webdir";
+
+projectname="$project";
+
+#handle existing installation
+if $deleteExistingInstallation && [ -d "$projectname" ]; then
+	echo "deleting existing project folder.."
+	$(rm -rf "$projectname");
+	projectname="$project";
+	echo "done!";
+elif [ -d "$projectname" ]; then
+	projectname="$project-copy";
+	i=1;
+fi
+
+#########--------->>Devinstallation<<---------#########
+if ! $isLiveInstallation; then
+
+	if [ -z "$server" ]; then
+
+		if [ -d "/home/$user/web/$project/" ]; then
+		
+			echo "getting installation from dev...";
+			$(cp -r /home/$user/web/$project/ ./$projectname);
+
+		else
+			echo "ERROR: No such project found in homedirectorx from $user";
+			exit;
+		fi
+
+	elif [ "$server" == "beta" ] || [ "$server" == "beta.cubetech.ch" ]; then
+
+		echo "getting installation from beta...";
+
+		#$(scp -r -P $port $user@$server:web/$project ./$projectname);
+	fi	
+
+	echo "done!";
+	echo "Saved installation as $projectname";
+	
+	#TODO call function to change wp-config and exec wp search-replace
+
+#########--------->>Liveinstallation<<--------#########
+else
+	#TODO Liveinstallation
+	echo "Comming soon";
+	#$(scp -r -P $port $user@$server:web/ $projectname);	
+	#getDB "$isLiveInstallation $server";
+fi
+
+cd "$projectname";
+
+getDB $projectname;
+wp user create "$CTWPUSER" "$CTWPMAIL" --user_pass="$CTPW" --role=administrator;

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#set default
+WORKDIR=$(pwd);
+
+#get args
+while getopts p option
+	do
+		case "${option}"
+		in
+	 	p) WORKDIR=${OPTARG};;
+ 	esac
+done
+
+current_version=$(wp core version);
+target_version=$(wp core check-update | sed "s/^\([0-9.]*\).*/\1/" | tr -d '\n');
+plugins_to_update=$(wp plugin update --all --dry-run | grep -v inactive | sed "1,2d" | sed -r "s/(|)(\sactive)//g" | sed "s/^/* /" | sed "s/\t/\n\*\* /" | sed "s/\s/ -> /2");
+plugins_to_remove=$(wp plugin list | grep inactive | sed "s/inactive//g" | sed -r "s/\t/#/3" | sed "s/#.*//g" | sed "s/\t/ /1" | sed "s/\t/Version /1" | sed "s/^/\* /");
+
+
+echo -e "\n\nh2. WordPress Core\n";
+echo "Version $current_version -> $target_version";
+echo -e "\nh2. Plugins\n";
+echo "$plugins_to_update";
+echo -e "\nh2. Plugins removed with status inactive\n";
+echo "$plugins_to_remove";
