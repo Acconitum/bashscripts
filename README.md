@@ -1,6 +1,6 @@
 contributer: Marc Mentha
 
-h2. getinstallation
+## getinstallation
 
 a script to copy wordpressinstallations from other users
 At the moment, the installation need to be on the same machine
@@ -16,7 +16,6 @@ Script will do the following
 * db search-replace
 * add yourself as a adminuser
 
-
-h2. getupdates
+## getupdates
 
 serves all plugins with available updates as markdown to copy and paste in a documentationfiler
